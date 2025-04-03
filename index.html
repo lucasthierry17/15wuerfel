@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Würfelspiel</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3 {
+            text-align: center;
+            color: #333;
+        }
+        .player-form {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .player-form input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .players-list {
+            margin-bottom: 20px;
+        }
+        .player-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .player-name {
+            display: flex;
+            align-items: center;
+        }
+        .player-balance {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        .positive-balance {
+            color: #4CAF50;
+        }
+        .negative-balance {
+            color: #f44336;
+        }
+        .player-controls {
+            display: flex;
+            align-items: center;
+        }
+        .score-input {
+            width: 60px;
+            padding: 5px;
+            margin: 0 10px;
+            text-align: center;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .winner {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .tied {
+            font-weight: bold;
+            color: #FF9800;
+        }
+        .overshot {
+            color: #f44336;
+        }
+        .debt-list {
+            margin-top: 15px;
+        }
+        .game-controls {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .tiebreaker {
+            background-color: #fffde7;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 5px;
+            border: 1px solid #FFC107;
+        }
+        @media (max-width: 600px) {
+            .player-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .player-controls {
+                margin-top: 10px;
+                width: 100%;
+                justify-content: space-between;
+            }
+            .game-controls {
+                flex-direction: column;
+            }
+            .game-controls button {
+                margin: 5px 0;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Würfelspiel</h1>
+        
+        <div class="player-form">
+            <input type="text" id="playerName" placeholder="Spielername eingeben">
+            <button id="addPlayer">Spieler hinzufügen</button>
+        </div>
+        
+        <div class="players-list" id="playersList"></div>
+        
+        <div class="game-controls">
+            <button id="startRound" disabled>Runde starten</button>
+            <button id="calculateResults" disabled>Ergebnisse berechnen</button>
+            <button id="newRound" disabled>Neue Runde</button>
+            <button id="resetGame">Spiel zurücksetzen</button>
+        </div>
+        
+        <div class="results" id="results"></div>
+        <div id="tiebreaker"></div>
+    </div>
+
+    <script>
+        // Spielerverwaltung
+        let players = [];
+        let gameStarted = false;
+        let roundEnded = false;
+        let tiebreakerMode = false;
+        let tiebreakerPlayers = [];
+        let roundHistory = [];
+        
+        // DOM-Elemente
+        const playerNameInput = document.getElementById('playerName');
+        const addPlayerBtn = document.getElementById('addPlayer');
+        const playersListEl = document.getElementById('playersList');
+        const startRoundBtn = document.getElementById('startRound');
+        const calculateBtn = document.getElementById('calculateResults');
+        const newRoundBtn = document.getElementById('newRound');
+        const resetGameBtn = document.getElementById('resetGame');
+        const resultsEl = document.getElementById('results');
+        const tiebreakerEl = document.getElementById('tiebreaker');
+        
+        // Event Listeners
+        addPlayerBtn.addEventListener('click', addPlayer);
+        startRoundBtn.addEventListener('click', startRound);
+        calculateBtn.addEventListener('click', calculateResults);
+        newRoundBtn.addEventListener('click', newRound);
+        resetGameBtn.addEventListener('click', resetGame);
+        
+        // Spieler hinzufügen
+        function addPlayer() {
+            const name = playerNameInput.value.trim();
+            if (name && !gameStarted) {
+                const playerId = Date.now().toString();
+                players.push({
+                    id: playerId,
+                    name: name,
+                    score: null,
+                    balance: 0,
+                    active: true
+                });
+                renderPlayers();
+                playerNameInput.value = '';
+                updateButtons();
+            }
+        }
+        
+        // Spieler rendern
+        function renderPlayers() {
+            playersListEl.innerHTML = '';
+            players.forEach(player => {
+                const playerEl = document.createElement('div');
+                playerEl.className = 'player-item';
+                
+                const nameContainerEl = document.createElement('div');
+                nameContainerEl.className = 'player-name';
+                
+                const nameEl = document.createElement('span');
+                nameEl.textContent = player.name;
+                
+                const balanceEl = document.createElement('span');
+                balanceEl.className = 'player-balance';
+                if (player.balance > 0) {
+                    balanceEl.classList.add('positive-balance');
+                    balanceEl.textContent = ` +${player.balance.toFixed(2)}€`;
+                } else if (player.balance < 0) {
+                    balanceEl.classList.add('negative-balance');
+                    balanceEl.textContent = ` ${player.balance.toFixed(2)}€`;
+                } else {
+                    balanceEl.textContent = ` ${player.balance.toFixed(2)}€`;
+                }
+                
+                nameContainerEl.appendChild(nameEl);
+                nameContainerEl.appendChild(balanceEl);
+                
+                const controlsEl = document.createElement('div');
+                controlsEl.className = 'player-controls';
+                
+                // Nur aktive Spieler zeigen Punkteeingabe im Tiebreaker-Modus
+                if (!tiebreakerMode || (tiebreakerMode && player.active)) {
+                    const scoreLabel = document.createElement('span');
+                    scoreLabel.textContent = 'Punktzahl:';
+                    
+                    const scoreInput = document.createElement('input');
+                    scoreInput.type = 'number';
+                    scoreInput.className = 'score-input';
+                    scoreInput.id = `score-${player.id}`;
+                    scoreInput.min = 1;
+                    scoreInput.disabled = !gameStarted || !player.active || roundEnded;
+                    scoreInput.value = player.score !== null ? player.score : '';
+                    
+                    // Automatisch prüfen auf 15 (sofortiger Gewinn)
+                    scoreInput.addEventListener('change', () => {
+                        const score = parseInt(scoreInput.value);
+                        if (score === 15) {
+                            // Bei 15 sofort Ergebnis berechnen
+                            setTimeout(() => {
+                                player.score = 15;
+                                calculateResults(true);
+                            }, 100);
+                        }
+                    });
+                    
+                    controlsEl.appendChild(scoreLabel);
+                    controlsEl.appendChild(scoreInput);
+                }
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = 'Entfernen';
+                removeBtn.style.backgroundColor = '#f44336';
+                removeBtn.disabled = gameStarted;
+                removeBtn.addEventListener('click', () => removePlayer(player.id));
+                
+                controlsEl.appendChild(removeBtn);
+                
+                playerEl.appendChild(nameContainerEl);
+                playerEl.appendChild(controlsEl);
+                playersListEl.appendChild(playerEl);
+            });
+        }
+        
+        // Spieler entfernen
+        function removePlayer(id) {
+            players = players.filter(player => player.id !== id);
+            renderPlayers();
+            updateButtons();
+        }
+        
+        // Runde starten
+        function startRound() {
+            gameStarted = true;
+            roundEnded = false;
+            tiebreakerMode = false;
+            
+            // Alle Spieler aktivieren
+            players.forEach(player => {
+                player.active = true;
+                player.score = null;
+            });
+            
+            renderPlayers();
+            updateButtons();
+            resultsEl.innerHTML = '<p>Runde läuft. Gib die Würfelergebnisse für jeden Spieler ein.</p>';
+            tiebreakerEl.innerHTML = '';
+        }
+        
+        // Ergebnisse berechnen
+        function calculateResults(perfectScoreEntered = false) {
+            // Punktzahlen sammeln
+            let allScoresEntered = true;
+            let activePlayers = players.filter(p => p.active);
+            
+            activePlayers.forEach(player => {
+                const scoreInput = document.getElementById(`score-${player.id}`);
+                if (scoreInput && scoreInput.value) {
+                    player.score = parseInt(scoreInput.value);
+                } else {
+                    allScoresEntered = false;
+                }
+            });
+            
+            if (!allScoresEntered && !perfectScoreEntered) {
+                resultsEl.innerHTML = '<p>Bitte gib für jeden aktiven Spieler eine Punktzahl ein.</p>';
+                return;
+            }
+            
+            // Spielregeln auswerten
+            const pot = players.length; // 1€ pro Spieler
+            let overshotPlayers = activePlayers.filter(p => p.score > 15);
+            let validPlayers = activePlayers.filter(p => p.score <= 15);
+            
+            // Runden-Historie-Eintrag vorbereiten
+            let roundEntry = {
+                players: JSON.parse(JSON.stringify(players)),
+                winner: null,
+                debts: []
+            };
+            
+            // Finde den Gewinner unter den gültigen Spielern
+            let winners = [];
+            
+            if (validPlayers.length > 0) {
+                // Prüfe zuerst auf exakte 15
+                const perfectScorePlayers = validPlayers.filter(p => p.score === 15);
+                if (perfectScorePlayers.length > 0) {
+                    winners = perfectScorePlayers;
+                } else {
+                    // Ansonsten die mit dem höchsten gültigen Wert finden
+                    const maxScore = validPlayers.reduce((max, player) => 
+                        Math.max(max, player.score), 0);
+                    winners = validPlayers.filter(p => p.score === maxScore);
+                }
+            }
+            
+            // Wenn es mehrere Sieger gibt (außer bei 15), Stechen durchführen
+            if (winners.length > 1 && winners[0].score !== 15) {
+                tiebreakerMode = true;
+                tiebreakerPlayers = winners;
+                
+                // Nur die Spieler im Stechen aktivieren
+                players.forEach(player => {
+                    player.active = tiebreakerPlayers.some(p => p.id === player.id);
+                    if (player.active) {
+                        player.score = null; // Punktzahlen für Stechen zurücksetzen
+                    }
+                });
+                
+                renderPlayers();
+                tiebreakerEl.innerHTML = `
+                    <div class="tiebreaker">
+                        <h3>Gleichstand!</h3>
+                        <p>Die folgenden Spieler müssen erneut würfeln:</p>
+                        <ul>
+                            ${tiebreakerPlayers.map(p => `<li>${p.name}</li>`).join('')}
+                        </ul>
+                        <p>Bitte neue Würfelergebnisse für diese Spieler eingeben.</p>
+                    </div>
+                `;
+                calculateBtn.disabled = false;
+                return;
+            }
+            
+            // Berechne Schulden
+            let debts = [];
+            let additionalPot = pot * Math.pow(2, overshotPlayers.length) - pot;
+            
+            if (winners.length > 0) {
+                const winner = winners[0]; // Sollte nur einer sein oder wir haben einen perfekten Score
+                roundEntry.winner = winner.id;
+                
+                // Jeder valide Spieler außer dem Gewinner zahlt 1€
+                validPlayers.forEach(player => {
+                    if (player.id !== winner.id) {
+                        debts.push({
+                            from: player.id,
+                            to: winner.id,
+                            amount: 1
+                        });
+                        player.balance -= 1;
+                        winner.balance += 1;
+                    }
+                });
+                
+                // Übergeworfene Spieler zahlen zusätzlich
+                overshotPlayers.forEach(player => {
+                    const extraAmount = Math.round((pot + additionalPot) / overshotPlayers.length * 100) / 100;
+                    debts.push({
+                        from: player.id,
+                        to: winner.id,
+                        amount: 1 + extraAmount // 1€ Grundeinsatz + Extra
+                    });
+                    player.balance -= (1 + extraAmount);
+                    winner.balance += (1 + extraAmount);
+                });
+                
+                roundEntry.debts = debts;
+                roundHistory.push(roundEntry);
+            }
+            
+            // Ergebnisse anzeigen
+            roundEnded = true;
+            renderResults(winners.length > 0 ? winners[0] : null, overshotPlayers, debts);
+            renderPlayers();
+            updateButtons();
+            tiebreakerEl.innerHTML = ''; // Stechenbereich leeren
+        }
+        
+        // Ergebnisse anzeigen
+        function renderResults(winner, overshotPlayers, debts) {
+            let html = '<h2>Ergebnisse</h2>';
+            
+            const activePlayers = players.filter(p => p.active);
+            
+            html += '<ul>';
+            activePlayers.forEach(player => {
+                let playerClass = '';
+                if (winner && player.id === winner.id) {
+                    playerClass = 'winner';
+                } else if (overshotPlayers.some(p => p.id === player.id)) {
+                    playerClass = 'overshot';
+                }
+                html += `<li class="${playerClass}">${player.name}: ${player.score} Punkte</li>`;
+            });
+            html += '</ul>';
+            
+            if (winner) {
+                html += `<p class="winner">${winner.name} hat gewonnen!</p>`;
+            } else if (tiebreakerMode) {
+                html += '<p>Stechen läuft...</p>';
+            } else {
+                html += '<p>Kein Gewinner in dieser Runde (alle haben überworfen).</p>';
+            }
+            
+            if (debts.length > 0) {
+                html += '<div class="debt-list"><h3>Schulden dieser Runde:</h3><ul>';
+                debts.forEach(debt => {
+                    const fromPlayer = players.find(p => p.id === debt.from);
+                    const toPlayer = players.find(p => p.id === debt.to);
+                    html += `<li>${fromPlayer.name} schuldet ${toPlayer.name} ${debt.amount.toFixed(2)}€</li>`;
+                });
+                html += '</ul></div>';
+            }
+            
+            // Gesamtbilanz anzeigen
+            html += '<div class="debt-list"><h3>Gesamtbilanz:</h3><ul>';
+            players.forEach(player => {
+                const balanceClass = player.balance > 0 ? 'winner' : player.balance < 0 ? 'overshot' : '';
+                html += `<li class="${balanceClass}">${player.name}: ${player.balance.toFixed(2)}€</li>`;
+            });
+            html += '</ul></div>';
+            
+            resultsEl.innerHTML = html;
+        }
+        
+        // Neue Runde
+        function newRound() {
+            // Punktzahlen zurücksetzen, aber Spieler und Bilanzen behalten
+            players.forEach(player => {
+                player.score = null;
+                player.active = true;
+            });
+            gameStarted = false;
+            roundEnded = false;
+            tiebreakerMode = false;
+            renderPlayers();
+            updateButtons();
+            resultsEl.innerHTML = '<p>Neue Runde. Klicke auf "Runde starten" um zu beginnen.</p>';
+            tiebreakerEl.innerHTML = '';
+        }
+        
+        // Spiel zurücksetzen
+        function resetGame() {
+            players = [];
+            gameStarted = false;
+            roundEnded = false;
+            tiebreakerMode = false;
+            roundHistory = [];
+            renderPlayers();
+            updateButtons();
+            resultsEl.innerHTML = '';
+            tiebreakerEl.innerHTML = '';
+        }
+        
+        // Buttons aktualisieren
+        function updateButtons() {
+            startRoundBtn.disabled = players.length < 2 || gameStarted;
+            calculateBtn.disabled = !gameStarted || roundEnded;
+            newRoundBtn.disabled = !roundEnded;
+        }
+        
+        // Enter-Taste zum Hinzufügen von Spielern nutzen
+        playerNameInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addPlayer();
+            }
+        });
+    </script>
+</body>
+</html>
